@@ -3,7 +3,7 @@ import { AnalysisResult, ScenarioResult, NegotiationDraft, DocumentComparison } 
 
 const NARA_ROUTER_DEFAULT_KEY = 'sk-nry-HV1Bly91j7eKd_czmamye_dyhWUv01lSb0suK3cvkAo';
 const NARA_ROUTER_BASE_URL = 'https://router.bynara.id/v1/chat/completions';
-const NARA_ROUTER_MODEL = 'nemotron-3.5-lightning-free';
+const NARA_ROUTER_MODEL = 'nemotron-3-super-free';
 
 // Robust JSON sanitizer for AI responses
 function cleanJsonResponse(rawText: string): string {
@@ -28,10 +28,10 @@ function cleanJsonResponse(rawText: string): string {
   return text;
 }
 
-// Call Nara Router OpenAI-compatible API with 12s timeout
+// Call Nara Router OpenAI-compatible API with 12s timeout for fast response & local fallback
 async function callNaraRouter(prompt: string, apiKey: string = NARA_ROUTER_DEFAULT_KEY): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second limit
+  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout
 
   try {
     const res = await fetch(NARA_ROUTER_BASE_URL, {
@@ -43,8 +43,14 @@ async function callNaraRouter(prompt: string, apiKey: string = NARA_ROUTER_DEFAU
       signal: controller.signal,
       body: JSON.stringify({
         model: NARA_ROUTER_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are Clause2Life AI. You MUST reply ONLY with valid JSON. Do not write markdown intro text.',
+          },
+          { role: 'user', content: prompt },
+        ],
+        temperature: 0.1,
       }),
     });
 
@@ -84,12 +90,65 @@ async function queryLLM(prompt: string, userKey?: string): Promise<string> {
   return await callNaraRouter(prompt, NARA_ROUTER_DEFAULT_KEY);
 }
 
+export function isLegalContractDocument(contractText: string): boolean {
+  if (!contractText || contractText.trim().length < 40) return false;
+  const text = contractText.toLowerCase();
+
+  const nonLegalSignals = [
+    'exam time table', 'timetable', 'mid sem exam', 'end sem exam', 'date sheet',
+    'curriculum vitae', 'resume', 'semester exam', 'admission, assesment', 'roll no',
+    'shift - >', '1st shift', '2nd shift', 'indian institute of information technology'
+  ];
+
+  if (nonLegalSignals.some((signal) => text.includes(signal))) {
+    if (!text.includes('agreement') && !text.includes('contract') && !text.includes('lease')) {
+      return false;
+    }
+  }
+
+  const legalSignals = [
+    'agreement', 'contract', 'shall', 'party', 'parties', 'clause', 'section',
+    'termination', 'lease', 'tenant', 'landlord', 'employer', 'employee',
+    'contractor', 'client', 'confidential', 'indemnify', 'liability', 'notice',
+    'governing law', 'warrant', 'obligation', 'breach', 'remedy', 'jurisdiction',
+    'intellectual property', 'payment', 'rent', 'deposit'
+  ];
+
+  let score = 0;
+  for (const signal of legalSignals) {
+    if (text.includes(signal)) score++;
+  }
+
+  return score >= 2;
+}
+
+function hasRelevantContractContext(question: string, contractText: string): boolean {
+  if (!isLegalContractDocument(contractText)) {
+    return false;
+  }
+
+  const q = question.toLowerCase();
+  const text = (contractText || '').toLowerCase();
+
+  const legalKeywords = [
+    'rent', 'lease', 'invoice', 'pay', 'payment', 'late', 'fee', 'notice', 'terminate', 'quit',
+    'renew', 'termination', 'breach', 'confidentiality', 'noncompete', 'liability', 'deposit',
+    'work', 'deliverable', 'return', 'ip', 'intellectual', 'auto', 'renewal', 'service', 'suspend',
+    'refund', 'remedy', 'court', 'liquidated', 'indemnify', 'non-solicit', 'cooling', 'revoke'
+  ];
+
+  const matchedQuestionKeywords = legalKeywords.filter((kw) => q.includes(kw));
+  if (matchedQuestionKeywords.length === 0) return false;
+
+  return matchedQuestionKeywords.some((kw) => text.includes(kw));
+}
+
 export async function analyzeDocumentWithGemini(
   contractText: string,
   personaDescription: string,
   apiKey?: string
 ): Promise<AnalysisResult> {
-  const trimmedText = contractText.slice(0, 5000);
+  const trimmedText = contractText.slice(0, 4000);
   const prompt = `
 Output ONLY raw valid JSON. Analyze this legal contract for user: "${personaDescription || 'Individual'}".
 
@@ -142,7 +201,7 @@ Output JSON matching this exact structure:
     "generatedAt": "${new Date().toISOString().split('T')[0]}"
   }
 }
-RiskLevel must be CRITICAL, HIGH, MEDIUM, or LOW.
+RiskLevel must be CRITICAL, HIGH, MEDIUM, or LOW. Category must be Termination, Payment, Intellectual Property, Liability, Confidentiality, Renewal, Dispute, or General.
 `;
 
   try {
@@ -161,7 +220,47 @@ export async function simulateScenarioWithGemini(
   question: string,
   apiKey?: string
 ): Promise<ScenarioResult> {
-  const trimmedText = contractText.slice(0, 5000);
+  if (!contractText || !contractText.trim()) {
+    return {
+      question,
+      summary: 'No contract text has been uploaded or pasted yet. Please upload the relevant agreement before asking a scenario question.',
+      overallRiskLevel: 'LOW',
+      consequenceChain: [
+        {
+          stepNumber: 1,
+          action: 'No uploaded contract found',
+          consequence: 'The system cannot map this question to a legal source without the relevant document text.',
+          financialOrLegalImpact: 'No direct contractual consequence can be assessed.',
+          clauseCitation: 'No contract loaded',
+        }
+      ],
+      verifierPassed: false,
+      verifierNotes: 'This question was blocked because no contract text was available for verification.',
+      actionableAdvice: 'Upload or paste the specific contract first, then ask a question tied to its clauses such as termination, payment, renewal, or notice requirements.',
+    };
+  }
+
+  if (!hasRelevantContractContext(question, contractText)) {
+    return {
+      question,
+      summary: 'This scenario is not grounded in the uploaded contract. Please ask a question tied to the actual clauses in the document.',
+      overallRiskLevel: 'LOW',
+      consequenceChain: [
+        {
+          stepNumber: 1,
+          action: `Question is not mapped to the uploaded document: "${question}"`,
+          consequence: 'No direct clause match was found in the uploaded contract text for this scenario.',
+          financialOrLegalImpact: 'No contractual penalty or legal consequence can be derived from this question without a relevant clause.',
+          clauseCitation: 'No relevant clause found',
+        }
+      ],
+      verifierPassed: false,
+      verifierNotes: 'The question was rejected because it does not map to the uploaded contract language or the relevant legal event categories.',
+      actionableAdvice: 'Upload the correct contract and ask about clauses like notice periods, late payment terms, termination, renewal, confidentiality, or liability obligations.',
+    };
+  }
+
+  const trimmedText = contractText.slice(0, 4000);
   const prompt = `
 Output ONLY raw valid JSON. Trace step-by-step consequence chain for scenario: "${question}".
 USER PERSONA: "${personaDescription || 'Individual'}"
@@ -299,6 +398,26 @@ Schema:
 
 // Fallback intelligent scenario generator
 function fallbackLocalScenario(text: string, question: string, persona: string): ScenarioResult {
+  if (!isLegalContractDocument(text)) {
+    return {
+      question,
+      summary: 'The uploaded document does not appear to be a legal contract or agreement. Consequence simulation requires a valid contract containing binding legal clauses.',
+      overallRiskLevel: 'LOW',
+      consequenceChain: [
+        {
+          stepNumber: 1,
+          action: `Scenario: "${question}"`,
+          consequence: 'No matching legal clauses found in uploaded document (e.g. Exam Timetable / Non-Legal File).',
+          financialOrLegalImpact: 'No direct contractual penalty or legal impact.',
+          clauseCitation: 'No legal clauses',
+        }
+      ],
+      verifierPassed: false,
+      verifierNotes: 'Rejected: Uploaded file is not a legal contract and contains no matching clauses.',
+      actionableAdvice: 'Upload a valid legal agreement (lease, NDA, MSA, employment agreement) before simulating scenarios.',
+    };
+  }
+
   const qLower = question.toLowerCase();
   const isQuitOrExit = qLower.includes('quit') || qLower.includes('leave') || qLower.includes('terminate');
   const isLate = qLower.includes('late') || qLower.includes('pay') || qLower.includes('delay');
@@ -312,7 +431,7 @@ function fallbackLocalScenario(text: string, question: string, persona: string):
         : isLate
         ? 'Late payment grace period expires; penalty fee assessed.'
         : 'Action logged under general contractual dispute terms.',
-      financialOrLegalImpact: isQuitOrExit ? 'Formal written notice required.' : isLate ? '$150 late fee penalty.' : 'Review notice terms.',
+      financialOrLegalImpact: isQuitOrExit ? 'Formal written notice required.' : isLate ? 'Late fee penalty assessed per contract terms.' : 'Review notice terms.',
       clauseCitation: 'Termination & Payment Terms',
     },
     {
@@ -348,6 +467,29 @@ function fallbackLocalScenario(text: string, question: string, persona: string):
 
 // Fallback local analysis parser
 function fallbackLocalAnalysis(text: string, persona: string): AnalysisResult {
+  if (!isLegalContractDocument(text)) {
+    return {
+      documentTitle: 'Uploaded Non-Legal Document',
+      documentType: 'Non-Legal File (Exam Schedule / Document)',
+      summary: 'The uploaded file does not contain legal clauses, payment schedules, or binding exit terms. Clause2Life requires a legal contract (lease, NDA, MSA, employment agreement) to analyze risks and simulate consequences.',
+      escalationTriggered: true,
+      escalationReason: 'Non-Legal Document Detected: The uploaded file (e.g. Exam Timetable / Academic Schedule) contains no binding legal terms or clauses.',
+      clauses: [],
+      obligationDates: [],
+      lawyerBrief: {
+        documentTitle: 'Uploaded Non-Legal Document',
+        documentType: 'Non-Legal File',
+        summary: 'The uploaded file is an academic schedule or non-legal document.',
+        userPersona: persona || 'Individual',
+        topRisks: [],
+        keyObligations: [],
+        questionsForLawyer: ['Please upload a valid legal contract to perform risk evaluation.'],
+        escalationWarnings: ['Non-legal document uploaded.'],
+        generatedAt: new Date().toISOString().split('T')[0],
+      },
+    };
+  }
+
   return {
     documentTitle: 'Uploaded Legal Contract',
     documentType: 'Legal Agreement',

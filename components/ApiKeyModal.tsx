@@ -15,6 +15,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
   currentKey,
 }) => {
   const [keyInput, setKeyInput] = useState(currentKey);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   useEffect(() => {
     setKeyInput(currentKey);
@@ -46,6 +47,24 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
           <p className="text-slate-600 leading-relaxed">
             Clause2Life supports <strong>Nara Router API Gateway</strong> (<code className="bg-slate-100 px-1 py-0.5 rounded">https://router.bynara.id/v1</code>) and <strong>Google Gemini API</strong>.
           </p>
+
+          <button
+            type="button"
+            onClick={() => setShowInstructions((prev) => !prev)}
+            className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2"
+          >
+            {showInstructions ? 'Hide detailed setup instructions' : 'Need help? Click for detailed instructions'}
+          </button>
+
+          {showInstructions && (
+            <div className="space-y-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-[11px] leading-relaxed text-blue-900">
+              <p><strong>1.</strong> Open your Nara Router dashboard and create an API key.</p>
+              <p><strong>2.</strong> Copy the key and paste it into the field below.</p>
+              <p><strong>3.</strong> Use the same key to access the router endpoint shown in your dashboard (for example, a base URL like <code className="bg-white px-1 rounded">https://router.bynara.id/v1</code>).</p>
+              <p><strong>4.</strong> Upload or paste a contract, then ask a scenario question tied to the document, such as late payment, notice period, termination, renewal, or confidentiality.</p>
+              <p><strong>5.</strong> If the app is using Gemini instead, paste a valid Gemini API key in the same field.</p>
+            </div>
+          )}
 
           <div>
             <label className="font-semibold text-slate-700 block mb-1">API Key (Nara Router <code className="text-blue-600">sk-nry-...</code> or Gemini <code className="text-emerald-600">AIza...</code>):</label>

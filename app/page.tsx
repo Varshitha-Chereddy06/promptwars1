@@ -38,7 +38,7 @@ export default function HomePage() {
   const [contractText, setContractText] = useState<string>(SAMPLE_CONTRACTS[0].content);
   const [contractTitle, setContractTitle] = useState<string>(SAMPLE_CONTRACTS[0].title);
   const [persona, setPersona] = useState<Persona>(SAMPLE_CONTRACTS[0].defaultPersona);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult>(
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
     SAMPLE_CONTRACTS[0].preparsedResult
   );
 
@@ -47,6 +47,7 @@ export default function HomePage() {
   >('simulator');
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isProcessingDocument, setIsProcessingDocument] = useState<boolean>(false);
   const [apiKey, setApiKey] = useState<string>('');
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
   const [selectedNegotiationClause, setSelectedNegotiationClause] = useState<Clause | null>(null);
@@ -65,15 +66,27 @@ export default function HomePage() {
   const handleDocumentLoaded = async (
     text: string,
     title: string,
-    sample?: SampleContract
+    sample?: SampleContract,
+    precomputedResult?: AnalysisResult
   ) => {
     setContractText(text);
     setContractTitle(title);
     setShowDocPreview(true);
+    setIsProcessingDocument(false);
 
     if (sample) {
       setPersona(sample.defaultPersona);
       setAnalysisResult(sample.preparsedResult);
+      return;
+    }
+
+    if (precomputedResult) {
+      setAnalysisResult(precomputedResult);
+      return;
+    }
+
+    if (!text || !text.trim()) {
+      setAnalysisResult(null);
       return;
     }
 
@@ -93,12 +106,25 @@ export default function HomePage() {
       const data = await res.json();
       if (data && data.clauses) {
         setAnalysisResult(data);
+      } else {
+        setAnalysisResult(null);
       }
     } catch (err) {
       console.error('Document analysis error:', err);
+      setAnalysisResult(null);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleClearDocument = () => {
+    setContractText('');
+    setContractTitle('');
+    setAnalysisResult(null);
+    setShowDocPreview(false);
+    setIsProcessingDocument(false);
+    setSelectedNegotiationClause(null);
+    setActiveTab('simulator');
   };
 
   const handlePersonaChange = async (updatedPersona: Persona) => {
@@ -207,31 +233,46 @@ export default function HomePage() {
 
         {/* Step 1 & Step 2 Input Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <DocumentUploader onDocumentLoaded={handleDocumentLoaded} isLoading={isLoading} />
+          <DocumentUploader
+            onDocumentLoaded={handleDocumentLoaded}
+            onClearDocument={handleClearDocument}
+            isLoading={isLoading || isProcessingDocument}
+            isProcessingDocument={isProcessingDocument}
+          />
           <PersonaForm currentPersona={persona} onPersonaChange={handlePersonaChange} />
         </div>
 
         {/* Loaded Document Viewer Section */}
         {contractText && (
           <div className="bg-white border border-blue-200 rounded-2xl p-5 shadow-sm space-y-3">
-            <div
-              onClick={() => setShowDocPreview(!showDocPreview)}
-              className="flex items-center justify-between cursor-pointer"
-            >
-              <div className="flex items-center space-x-2">
-                <FileText className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-sm text-slate-900">
-                  Loaded Document Text: <span className="text-blue-600">{contractTitle}</span>
-                </h3>
-                <span className="text-[11px] bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-semibold">
-                  {contractText.length} chars • {contractText.split(/\s+/).length} words
-                </span>
+            <div className="flex items-center justify-between gap-3">
+              <div
+                onClick={() => setShowDocPreview(!showDocPreview)}
+                className="flex items-center justify-between cursor-pointer flex-1"
+              >
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Loaded Document Text: <span className="text-blue-600">{contractTitle}</span>
+                  </h3>
+                  <span className="text-[11px] bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full font-semibold">
+                    {contractText.length} chars • {contractText.split(/\s+/).length} words
+                  </span>
+                </div>
+
+                <div className="flex items-center space-x-2 text-xs font-semibold text-blue-600">
+                  <span>{showDocPreview ? 'Hide Text' : 'View Full Document Text'}</span>
+                  {showDocPreview ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </div>
               </div>
 
-              <div className="flex items-center space-x-2 text-xs font-semibold text-blue-600">
-                <span>{showDocPreview ? 'Hide Text' : 'View Full Document Text'}</span>
-                {showDocPreview ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-              </div>
+              <button
+                type="button"
+                onClick={handleClearDocument}
+                className="px-3 py-1.5 text-[11px] font-semibold rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition"
+              >
+                Clear text
+              </button>
             </div>
 
             {showDocPreview && (

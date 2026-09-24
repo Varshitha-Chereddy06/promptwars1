@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
 import { Upload, FileText, CheckCircle2, Sparkles } from 'lucide-react';
 import { SAMPLE_CONTRACTS, SampleContract } from '@/lib/samples';
+import { AnalysisResult } from '@/lib/types';
 
 interface DocumentUploaderProps {
-  onDocumentLoaded: (text: string, title: string, sample?: SampleContract) => void;
+  onDocumentLoaded: (text: string, title: string, sample?: SampleContract, precomputedResult?: AnalysisResult) => void;
+  onClearDocument: () => void;
   isLoading: boolean;
+  isProcessingDocument: boolean;
 }
 
 export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
   onDocumentLoaded,
+  onClearDocument,
   isLoading,
+  isProcessingDocument,
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [pastedText, setPastedText] = useState('');
-  const [selectedSampleId, setSelectedSampleId] = useState<string>('');
+  const [selectedSampleId, setSelectedSampleId] = useState<string>(SAMPLE_CONTRACTS[0].id);
+  const [statusMessage, setStatusMessage] = useState('');
 
   const handleFileUpload = async (file: File) => {
+    setStatusMessage(`Processing ${file.name}...`);
+    setSelectedSampleId('');
     const formData = new FormData();
     formData.append('file', file);
 
@@ -25,21 +33,39 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
         body: formData,
       });
       const data = await res.json();
-      const text = await file.text();
-      onDocumentLoaded(text, file.name);
+      const extractedText = data.extractedText || (await file.text());
+      setStatusMessage('');
+      await onDocumentLoaded(extractedText, file.name, undefined, data);
     } catch (err) {
       console.error('File read error', err);
+      try {
+        const text = await file.text();
+        setStatusMessage('');
+        await onDocumentLoaded(text, file.name);
+      } catch {
+        setStatusMessage('Unable to process this document. Please try another file or paste text manually.');
+      }
     }
   };
 
   const handleSampleSelect = (sample: SampleContract) => {
     setSelectedSampleId(sample.id);
+    setStatusMessage('');
     onDocumentLoaded(sample.content, sample.title, sample);
   };
 
-  const handleTextSubmit = () => {
+  const handleTextSubmit = async () => {
     if (!pastedText.trim()) return;
-    onDocumentLoaded(pastedText, 'Custom Pasted Document');
+    setSelectedSampleId('');
+    setStatusMessage('');
+    await onDocumentLoaded(pastedText, 'Custom Pasted Document');
+  };
+
+  const handleClear = () => {
+    setSelectedSampleId('');
+    setPastedText('');
+    setStatusMessage('');
+    onClearDocument();
   };
 
   return (
@@ -97,10 +123,25 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
         </div>
       </div>
 
-      <div className="relative flex items-center my-4">
-        <div className="flex-grow border-t border-slate-200"></div>
-        <span className="flex-shrink mx-4 text-xs text-slate-400 font-medium uppercase">Or Upload Custom Document</span>
-        <div className="flex-grow border-t border-slate-200"></div>
+      {(isLoading || isProcessingDocument || statusMessage) && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 font-medium">
+          {isLoading || isProcessingDocument ? 'Processing uploaded document and converting text...' : statusMessage}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="relative flex items-center my-4 flex-1">
+          <div className="flex-grow border-t border-slate-200"></div>
+          <span className="flex-shrink mx-4 text-xs text-slate-400 font-medium uppercase">Or Upload Custom Document</span>
+          <div className="flex-grow border-t border-slate-200"></div>
+        </div>
+        <button
+          type="button"
+          onClick={handleClear}
+          className="text-[11px] font-semibold text-slate-600 hover:text-red-600 transition"
+        >
+          Clear
+        </button>
       </div>
 
       {/* Drag & Drop Area */}

@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await analyzeDocumentWithGemini(text, persona, apiKey);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, extractedText: text });
   } catch (err: any) {
     console.error('Error in /api/analyze:', err);
     return NextResponse.json(

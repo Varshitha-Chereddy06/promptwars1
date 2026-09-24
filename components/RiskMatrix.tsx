@@ -70,6 +70,15 @@ export const RiskMatrix: React.FC<RiskMatrixProps> = ({
 
       {/* Clause Cards List */}
       <div className="space-y-3 pt-2">
+        {clauses.length === 0 && (
+          <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl space-y-2">
+            <AlertCircle className="w-8 h-8 text-amber-500 mx-auto" />
+            <h4 className="font-bold text-slate-800 text-sm">No Contract Clauses Found</h4>
+            <p className="text-xs text-slate-500 max-w-md mx-auto">
+              The uploaded file does not contain legal contract clauses or agreements. Please upload a valid legal document (lease, NDA, MSA, employment agreement) to analyze risks.
+            </p>
+          </div>
+        )}
         {filteredClauses.map((clause) => {
           const isExpanded = expandedClauseId === clause.id;
           return (
