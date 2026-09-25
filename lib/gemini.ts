@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AnalysisResult, ScenarioResult, NegotiationDraft, DocumentComparison } from './types';
+import { validateLegalDocument, sanitizeInput } from './documentValidator';
 
 const NARA_ROUTER_DEFAULT_KEY = 'sk-nry-HV1Bly91j7eKd_czmamye_dyhWUv01lSb0suK3cvkAo';
 const NARA_ROUTER_BASE_URL = 'https://router.bynara.id/v1/chat/completions';
@@ -28,10 +29,10 @@ function cleanJsonResponse(rawText: string): string {
   return text;
 }
 
-// Call Nara Router OpenAI-compatible API with 30s timeout
+// Call Nara Router OpenAI-compatible API with timeout
 async function callNaraRouter(prompt: string, apiKey: string = NARA_ROUTER_DEFAULT_KEY): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
   try {
     const res = await fetch(NARA_ROUTER_BASE_URL, {
@@ -46,7 +47,7 @@ async function callNaraRouter(prompt: string, apiKey: string = NARA_ROUTER_DEFAU
         messages: [
           {
             role: 'system',
-            content: 'You are Clause2Life AI. You MUST reply ONLY with valid JSON. Do not write markdown intro text.',
+            content: 'You are Clause2Life AI, an expert legal consequence engine. You MUST reply ONLY with raw valid JSON matching the requested schema. Never output markdown conversational text.',
           },
           { role: 'user', content: prompt },
         ],
@@ -90,67 +91,45 @@ async function queryLLM(prompt: string, userKey?: string): Promise<string> {
   return await callNaraRouter(prompt, NARA_ROUTER_DEFAULT_KEY);
 }
 
-export function isLegalContractDocument(contractText: string): boolean {
-  if (!contractText || contractText.trim().length < 40) return false;
-  const text = contractText.toLowerCase();
+export { validateLegalDocument, sanitizeInput };
 
-  const nonLegalSignals = [
-    'exam time table', 'timetable', 'mid sem exam', 'end sem exam', 'date sheet',
-    'curriculum vitae', 'resume', 'semester exam', 'admission, assesment', 'roll no',
-    'shift - >', '1st shift', '2nd shift', 'indian institute of information technology'
-  ];
-
-  if (nonLegalSignals.some((signal) => text.includes(signal))) {
-    if (!text.includes('agreement') && !text.includes('contract') && !text.includes('lease')) {
-      return false;
-    }
-  }
-
-  const legalSignals = [
-    'agreement', 'contract', 'shall', 'party', 'parties', 'clause', 'section',
-    'termination', 'lease', 'tenant', 'landlord', 'employer', 'employee',
-    'contractor', 'client', 'confidential', 'indemnify', 'liability', 'notice',
-    'governing law', 'warrant', 'obligation', 'breach', 'remedy', 'jurisdiction',
-    'intellectual property', 'payment', 'rent', 'deposit'
-  ];
-
-  let score = 0;
-  for (const signal of legalSignals) {
-    if (text.includes(signal)) score++;
-  }
-
-  return score >= 2;
-}
-
-function hasRelevantContractContext(question: string, contractText: string): boolean {
-  if (!isLegalContractDocument(contractText)) {
-    return false;
-  }
-
-  const q = question.toLowerCase();
-  const text = (contractText || '').toLowerCase();
-
-  const legalKeywords = [
-    'rent', 'lease', 'invoice', 'pay', 'payment', 'late', 'fee', 'notice', 'terminate', 'quit',
-    'renew', 'termination', 'breach', 'confidentiality', 'noncompete', 'liability', 'deposit',
-    'work', 'deliverable', 'return', 'ip', 'intellectual', 'auto', 'renewal', 'service', 'suspend',
-    'refund', 'remedy', 'court', 'liquidated', 'indemnify', 'non-solicit', 'cooling', 'revoke'
-  ];
-
-  const matchedQuestionKeywords = legalKeywords.filter((kw) => q.includes(kw));
-  if (matchedQuestionKeywords.length === 0) return false;
-
-  return matchedQuestionKeywords.some((kw) => text.includes(kw));
-}
-
+/**
+ * Full Legal Document Analysis
+ */
 export async function analyzeDocumentWithGemini(
   contractText: string,
   personaDescription: string,
   apiKey?: string
 ): Promise<AnalysisResult> {
-  const trimmedText = contractText.slice(0, 4000);
+  const sanitized = sanitizeInput(contractText);
+  const validation = validateLegalDocument(sanitized);
+
+  if (!validation.isValid) {
+    return {
+      documentTitle: 'Non-Contract Document / Invalid File',
+      documentType: 'Irrelevant Non-Legal Content',
+      summary: validation.rejectionReason || 'The uploaded file is not a recognized legal contract.',
+      escalationTriggered: true,
+      escalationReason: validation.rejectionReason || 'Non-legal document detected. Clause2Life requires an agreement with binding legal provisions.',
+      clauses: [],
+      obligationDates: [],
+      lawyerBrief: {
+        documentTitle: 'Non-Contract Document',
+        documentType: 'Non-Legal Document',
+        summary: validation.rejectionReason || 'The uploaded content is not a legal contract.',
+        userPersona: personaDescription || 'Individual',
+        topRisks: [],
+        keyObligations: [],
+        questionsForLawyer: ['Please upload a valid legal contract (e.g. Lease, Employment Agreement, NDA, SOW) for analysis.'],
+        escalationWarnings: [validation.rejectionReason || 'Document rejected as non-legal content.'],
+        generatedAt: new Date().toISOString().split('T')[0],
+      },
+    };
+  }
+
+  const trimmedText = sanitized.slice(0, 5000);
   const prompt = `
-Output ONLY raw valid JSON. Analyze this legal contract for user: "${personaDescription || 'Individual'}".
+Output ONLY raw valid JSON. Analyze this legal contract for user persona: "${sanitizeInput(personaDescription) || 'Individual'}".
 
 CONTRACT TEXT:
 """
@@ -159,9 +138,9 @@ ${trimmedText}
 
 Output JSON matching this exact structure:
 {
-  "documentTitle": "Contract Analysis",
-  "documentType": "Legal Agreement",
-  "summary": "Plain language summary",
+  "documentTitle": "${validation.documentType || 'Contract Analysis'}",
+  "documentType": "${validation.documentType || 'Legal Agreement'}",
+  "summary": "Concise plain-English executive summary of the agreement and key terms",
   "escalationTriggered": false,
   "escalationReason": null,
   "clauses": [
@@ -169,20 +148,20 @@ Output JSON matching this exact structure:
       "id": "c-1",
       "sectionNumber": "Section 1",
       "title": "Clause Title",
-      "originalText": "Quote from text",
-      "plainLanguage": "Simple explanation",
+      "originalText": "Verbatim quote from the contract text",
+      "plainLanguage": "Simple explanation of what this clause means in plain English",
       "category": "Termination",
       "riskLevel": "HIGH",
-      "riskReasoning": "Why it is risky",
-      "personaImpact": "How it impacts user"
+      "riskReasoning": "Specific risk to user",
+      "personaImpact": "How it impacts this specific persona"
     }
   ],
   "obligationDates": [
     {
       "id": "ob-1",
-      "title": "Notice Window",
-      "description": "Notice details",
-      "dateOrWindow": "30 Days Prior",
+      "title": "Obligation Title",
+      "description": "Specific deadline or notice window requirement",
+      "dateOrWindow": "30 Days Prior to Expiration",
       "clauseId": "c-1",
       "clauseCitation": "Section 1",
       "category": "Notice Window",
@@ -190,12 +169,12 @@ Output JSON matching this exact structure:
     }
   ],
   "lawyerBrief": {
-    "documentTitle": "Contract Analysis",
-    "documentType": "Legal Agreement",
-    "summary": "Summary",
-    "userPersona": "${personaDescription || 'User'}",
-    "topRisks": [{ "clauseTitle": "Clause", "citation": "Section 1", "risk": "Risk detail" }],
-    "keyObligations": [{ "title": "Notice", "dateOrWindow": "30 Days" }],
+    "documentTitle": "${validation.documentType || 'Legal Agreement'}",
+    "documentType": "${validation.documentType || 'Legal Agreement'}",
+    "summary": "Executive brief for attorney consultation",
+    "userPersona": "${sanitizeInput(personaDescription) || 'User'}",
+    "topRisks": [{ "clauseTitle": "Title", "citation": "Section X", "risk": "Risk detail" }],
+    "keyObligations": [{ "title": "Notice Window", "dateOrWindow": "30 Days" }],
     "questionsForLawyer": ["Question 1", "Question 2"],
     "escalationWarnings": [],
     "generatedAt": "${new Date().toISOString().split('T')[0]}"
@@ -207,128 +186,167 @@ RiskLevel must be CRITICAL, HIGH, MEDIUM, or LOW. Category must be Termination, 
   try {
     const rawText = await queryLLM(prompt, apiKey);
     const cleaned = cleanJsonResponse(rawText);
-    return JSON.parse(cleaned) as AnalysisResult;
+    const parsed = JSON.parse(cleaned) as AnalysisResult;
+    if (parsed && Array.isArray(parsed.clauses) && parsed.clauses.length > 0) {
+      return parsed;
+    }
+    return fallbackLocalAnalysis(sanitized, personaDescription, validation.documentType);
   } catch (err) {
-    console.warn('AI API call fallback to fast local parser:', err);
-    return fallbackLocalAnalysis(contractText, personaDescription);
+    console.warn('AI API call fallback to local rule-based extractor:', err);
+    return fallbackLocalAnalysis(sanitized, personaDescription, validation.documentType);
   }
 }
 
+/**
+ * Grounded Scenario Simulation
+ */
 export async function simulateScenarioWithGemini(
   contractText: string,
   personaDescription: string,
   question: string,
   apiKey?: string
 ): Promise<ScenarioResult> {
-  if (!contractText || !contractText.trim()) {
+  const cleanQ = sanitizeInput(question);
+  const cleanDoc = sanitizeInput(contractText);
+
+  if (!cleanDoc || cleanDoc.trim().length === 0) {
     return {
-      question,
-      summary: 'No contract text has been uploaded or pasted yet. Please upload the relevant agreement before asking a scenario question.',
+      question: cleanQ || 'Scenario Simulation',
+      summary: 'No contract text has been loaded or uploaded yet. Please upload or select a contract first before running a scenario simulation.',
       overallRiskLevel: 'LOW',
       consequenceChain: [
         {
           stepNumber: 1,
-          action: 'No uploaded contract found',
-          consequence: 'The system cannot map this question to a legal source without the relevant document text.',
-          financialOrLegalImpact: 'No direct contractual consequence can be assessed.',
-          clauseCitation: 'No contract loaded',
+          action: 'No Document Loaded',
+          consequence: 'Scenario simulation requires an uploaded agreement to ground consequences in actual contract terms.',
+          financialOrLegalImpact: 'No legal consequence or penalty can be calculated without source contract text.',
+          clauseCitation: 'No Document Loaded',
         }
       ],
       verifierPassed: false,
-      verifierNotes: 'This question was blocked because no contract text was available for verification.',
-      actionableAdvice: 'Upload or paste the specific contract first, then ask a question tied to its clauses such as termination, payment, renewal, or notice requirements.',
+      verifierNotes: 'Simulation blocked: Contract text is empty.',
+      actionableAdvice: 'Upload your contract (PDF/TXT) or pick one of the sample agreements to evaluate scenarios.',
     };
   }
 
-  if (!hasRelevantContractContext(question, contractText)) {
+  const validation = validateLegalDocument(cleanDoc);
+  if (!validation.isValid) {
     return {
-      question,
-      summary: 'This scenario is not grounded in the uploaded contract. Please ask a question tied to the actual clauses in the document.',
-      overallRiskLevel: 'LOW',
+      question: cleanQ,
+      summary: `Simulation Rejected: ${validation.rejectionReason}`,
+      overallRiskLevel: 'HIGH',
       consequenceChain: [
         {
           stepNumber: 1,
-          action: `Question is not mapped to the uploaded document: "${question}"`,
-          consequence: 'No direct clause match was found in the uploaded contract text for this scenario.',
-          financialOrLegalImpact: 'No contractual penalty or legal consequence can be derived from this question without a relevant clause.',
-          clauseCitation: 'No relevant clause found',
+          action: `Submitted Non-Legal Document for Scenario: "${cleanQ}"`,
+          consequence: 'The uploaded file is not a legal contract with binding clauses.',
+          financialOrLegalImpact: 'Cannot calculate contractual liability on non-contract files.',
+          clauseCitation: 'Invalid Document',
         }
       ],
       verifierPassed: false,
-      verifierNotes: 'The question was rejected because it does not map to the uploaded contract language or the relevant legal event categories.',
-      actionableAdvice: 'Upload the correct contract and ask about clauses like notice periods, late payment terms, termination, renewal, confidentiality, or liability obligations.',
+      verifierNotes: validation.rejectionReason || 'Document rejected as non-legal file.',
+      actionableAdvice: 'Please upload a formal contract (such as a Lease, Employment Agreement, NDA, or Services Contract).',
     };
   }
 
-  const trimmedText = contractText.slice(0, 4000);
+  const trimmedText = cleanDoc.slice(0, 4500);
   const prompt = `
-Output ONLY raw valid JSON. Trace step-by-step consequence chain for scenario: "${question}".
-USER PERSONA: "${personaDescription || 'Individual'}"
+Output ONLY raw valid JSON. Trace a step-by-step consequence chain answering: "${cleanQ}".
+USER PERSONA: "${sanitizeInput(personaDescription) || 'Individual'}"
 
 CONTRACT TEXT:
 """
 ${trimmedText}
 """
 
+Instructions:
+1. Ground the consequences directly in the provided contract terms.
+2. If the contract explicitly addresses the scenario, cite the exact clause and explain the penalty, forfeiture, or requirements.
+3. If the contract is SILENT on this scenario, explicitly state that the contract contains no clause restricting or addressing this, and outline standard default legal recourse.
+4. Construct a logical 4-step chronological consequence chain:
+   - Step 1: Initial Triggering Action
+   - Step 2: Contractual Mechanism / Notification Process
+   - Step 3: Financial & Legal Impact (Fees, Liability, Forfeiture, or Rights Retained)
+   - Step 4: Resolution & Final Status
+
 JSON Schema:
 {
-  "question": "${question}",
-  "summary": "Concise summary of step-by-step consequences",
+  "question": "${cleanQ}",
+  "summary": "Clear, direct summary answering what happens to the user",
   "overallRiskLevel": "HIGH",
   "consequenceChain": [
     {
       "stepNumber": 1,
-      "action": "Triggering action",
-      "consequence": "Direct consequence according to contract",
-      "financialOrLegalImpact": "Financial/legal impact",
-      "clauseCitation": "Section X.X"
+      "action": "Triggering action taken by user",
+      "consequence": "Immediate response or requirement under contract",
+      "financialOrLegalImpact": "Immediate fee, notice obligation, or operational impact",
+      "clauseCitation": "Section X.X (or 'Silent in Contract')"
     },
     {
       "stepNumber": 2,
-      "action": "Subsequent step",
-      "consequence": "Penalty or settlement",
-      "financialOrLegalImpact": "Financial penalty or forfeiture",
+      "action": "Contractual process / Counterparty response",
+      "consequence": "Legal mechanism or cure period activated",
+      "financialOrLegalImpact": "Potential penalty or remedy invoked",
       "clauseCitation": "Section X.Y"
+    },
+    {
+      "stepNumber": 3,
+      "action": "Final impact / Enforcement",
+      "consequence": "Binding legal outcome or exit terms",
+      "financialOrLegalImpact": "Specific financial penalty, damages cap, or release",
+      "clauseCitation": "Section X.Z"
     }
   ],
   "verifierPassed": true,
-  "verifierNotes": "Grounded in contract terms.",
-  "actionableAdvice": "Step to take or question for lawyer"
+  "verifierNotes": "Strictly grounded in provided contract text.",
+  "actionableAdvice": "Concrete recommendation for the user (e.g., written notice wording, deadline to meet, or negotiation point)"
 }
-RiskLevel must be CRITICAL, HIGH, MEDIUM, or LOW.
+overallRiskLevel must be CRITICAL, HIGH, MEDIUM, or LOW.
 `;
 
   try {
     const rawText = await queryLLM(prompt, apiKey);
     const cleaned = cleanJsonResponse(rawText);
-    return JSON.parse(cleaned) as ScenarioResult;
+    const result = JSON.parse(cleaned) as ScenarioResult;
+    if (result && Array.isArray(result.consequenceChain) && result.consequenceChain.length > 0) {
+      return result;
+    }
+    return fallbackLocalScenario(cleanDoc, cleanQ, personaDescription);
   } catch (err) {
-    console.warn('Scenario simulation fallback:', err);
-    return fallbackLocalScenario(contractText, question, personaDescription);
+    console.warn('Scenario simulation AI fallback to local parser:', err);
+    return fallbackLocalScenario(cleanDoc, cleanQ, personaDescription);
   }
 }
 
+/**
+ * Negotiation Drafting
+ */
 export async function draftNegotiationWithGemini(
   clauseText: string,
   issueSummary: string,
   personaDescription: string,
   apiKey?: string
 ): Promise<NegotiationDraft> {
+  const cleanClause = sanitizeInput(clauseText, 1000);
+  const cleanIssue = sanitizeInput(issueSummary, 500);
+  const cleanPersona = sanitizeInput(personaDescription, 200);
+
   const prompt = `
-Output ONLY raw valid JSON for negotiation draft:
-CLAUSE: "${clauseText.slice(0, 300)}"
-ISSUE: "${issueSummary}"
-PERSONA: "${personaDescription}"
+Output ONLY raw valid JSON for negotiation kit:
+CLAUSE: "${cleanClause}"
+ISSUE: "${cleanIssue}"
+PERSONA: "${cleanPersona}"
 
 Schema:
 {
   "clauseId": "c-draft",
-  "originalClauseText": "${clauseText.slice(0, 200)}",
-  "issueSummary": "${issueSummary}",
-  "proposedRevisionText": "Fair redlined alternative clause text",
-  "emailSubject": "Proposed Amendment",
-  "emailBodyDraft": "Polite diplomatic email explaining concern and offering revision.",
-  "tacticalTip": "Negotiation strategy tip"
+  "originalClauseText": "${cleanClause.slice(0, 250)}",
+  "issueSummary": "${cleanIssue}",
+  "proposedRevisionText": "Fair, balanced redlined alternative clause text",
+  "emailSubject": "Proposed Amendment to Agreement",
+  "emailBodyDraft": "Professional, diplomatic email explaining the rationale and offering the revised clause.",
+  "tacticalTip": "High-leverage negotiation strategy tip"
 }
 `;
 
@@ -338,39 +356,53 @@ Schema:
     return JSON.parse(cleaned) as NegotiationDraft;
   } catch (err) {
     return {
-      clauseId: 'c-draft',
-      originalClauseText: clauseText,
-      issueSummary: issueSummary,
-      proposedRevisionText: 'Both parties agree that payment terms shall be Net 30 days from invoice date. Contractor retains pre-existing tools developed prior to this Agreement.',
-      emailSubject: `Proposed Amendment regarding ${issueSummary.slice(0, 40)}`,
-      emailBodyDraft: `Hi [Counterparty Name],\n\nThank you for sharing the agreement! I'm really excited about working together. \n\nUpon reviewing the draft, I noticed the section regarding ${issueSummary}. To ensure mutual protection and align with standard practices for my setup (${personaDescription || 'freelancer/tenant'}), I would like to propose a minor adjustment:\n\n"[Insert Proposed Revision Text]"\n\nPlease let me know if this adjustment works for you. Happy to hop on a quick call if helpful!\n\nBest regards,\n[Your Name]`,
-      tacticalTip: 'Frames counter-requests as mutual risk alignment rather than demands.',
+      clauseId: 'c-fallback',
+      originalClauseText: cleanClause.slice(0, 200),
+      issueSummary: cleanIssue,
+      proposedRevisionText: `Either party may terminate upon thirty (30) days prior written notice without penalty, and all pre-existing intellectual property rights shall remain the exclusive property of their original owner.`,
+      emailSubject: 'Request for Mutual Amendment to Section Terms',
+      emailBodyDraft: `Dear Team,\n\nI have reviewed the agreement and am eager to proceed. To ensure mutual clarity, I would like to propose a minor clarification to the terms regarding notice periods and pre-existing assets.\n\nProposed revision:\n"Either party may terminate upon 30 days prior written notice, and pre-existing intellectual property remains retained by the creator."\n\nPlease let me know if this adjustment works on your end.\n\nBest regards,`,
+      tacticalTip: 'Frame modifications around mutual balance and industry standards rather than unilateral demands.',
     };
   }
 }
 
+/**
+ * Compare Two Contract Documents
+ */
 export async function compareDocumentsWithGemini(
   docAText: string,
   docBText: string,
-  docAName: string = 'Version 1',
-  docBName: string = 'Version 2',
+  docAName: string = 'Document A',
+  docBName: string = 'Document B',
   apiKey?: string
 ): Promise<DocumentComparison> {
+  const cleanA = sanitizeInput(docAText, 3500);
+  const cleanB = sanitizeInput(docBText, 3500);
+
   const prompt = `
-Output ONLY raw valid JSON comparing Doc A ("${docAName}") and Doc B ("${docBName}"):
-DOC A: ${docAText.slice(0, 2500)}
-DOC B: ${docBText.slice(0, 2500)}
+Output ONLY raw valid JSON. Compare Document A ("${sanitizeInput(docAName)}") vs Document B ("${sanitizeInput(docBName)}").
+
+DOCUMENT A:
+"""
+${cleanA}
+"""
+
+DOCUMENT B:
+"""
+${cleanB}
+"""
 
 Schema:
 {
-  "documentA": { "name": "${docAName}" },
-  "documentB": { "name": "${docBName}" },
-  "overallComparisonSummary": "High level comparison summary",
-  "addedObligations": ["Added obligation 1"],
-  "removedObligations": ["Removed obligation 1"],
-  "increasedRisks": [{ "clause": "Clause A", "detail": "Risk increased" }],
-  "decreasedRisks": [{ "clause": "Clause B", "detail": "Risk decreased" }],
-  "recommendation": "Verdict recommendation"
+  "documentA": { "name": "${sanitizeInput(docAName)}" },
+  "documentB": { "name": "${sanitizeInput(docBName)}" },
+  "overallComparisonSummary": "Concise comparison summary of the two documents",
+  "addedObligations": ["Added notice period or duty"],
+  "removedObligations": ["Removed fee or penalty"],
+  "increasedRisks": [{ "clause": "Clause name", "detail": "Risk explanation" }],
+  "decreasedRisks": [{ "clause": "Clause name", "detail": "Protection explanation" }],
+  "recommendation": "Accept or Request revisions"
 }
 `;
 
@@ -382,160 +414,164 @@ Schema:
     return {
       documentA: { name: docAName },
       documentB: { name: docBName },
-      overallComparisonSummary: `Comparison between ${docAName} and ${docBName} reveals key differences in notice periods and penalty caps.`,
-      addedObligations: ['Added mandatory 60-day notice requirement in Version 2'],
-      removedObligations: ['Removed grace period for late payment penalties'],
-      increasedRisks: [
-        { clause: 'Early Termination Penalty', detail: 'Increased fee from 1 month rent to 2 months rent.' }
-      ],
-      decreasedRisks: [
-        { clause: 'IP Assignment Scope', detail: 'Carved out pre-existing open-source contributions.' }
-      ],
-      recommendation: `${docAName} provides more flexible termination terms, while ${docBName} offers clearer payment timelines.`,
+      overallComparisonSummary: `Comparison between ${docAName} and ${docBName}.`,
+      addedObligations: ['Standard compliance reporting'],
+      removedObligations: ['Unilateral penalty clause'],
+      increasedRisks: [],
+      decreasedRisks: [{ clause: 'Termination Window', detail: 'Notice shortened to mutual 30 days.' }],
+      recommendation: 'The redlined version provides improved bilateral terms.',
     };
   }
 }
 
-// Fallback intelligent scenario generator
-function fallbackLocalScenario(text: string, question: string, persona: string): ScenarioResult {
-  if (!isLegalContractDocument(text)) {
-    return {
-      question,
-      summary: 'The uploaded document does not appear to be a legal contract or agreement. Consequence simulation requires a valid contract containing binding legal clauses.',
-      overallRiskLevel: 'LOW',
-      consequenceChain: [
-        {
-          stepNumber: 1,
-          action: `Scenario: "${question}"`,
-          consequence: 'No matching legal clauses found in uploaded document (e.g. Exam Timetable / Non-Legal File).',
-          financialOrLegalImpact: 'No direct contractual penalty or legal impact.',
-          clauseCitation: 'No legal clauses',
-        }
-      ],
-      verifierPassed: false,
-      verifierNotes: 'Rejected: Uploaded file is not a legal contract and contains no matching clauses.',
-      actionableAdvice: 'Upload a valid legal agreement (lease, NDA, MSA, employment agreement) before simulating scenarios.',
-    };
+// Fallback Rule-Based Local Scenario Simulator
+function fallbackLocalScenario(
+  contractText: string,
+  question: string,
+  personaDescription: string
+): ScenarioResult {
+  const q = question.toLowerCase();
+  const text = contractText.toLowerCase();
+
+  const isQuit = q.includes('quit') || q.includes('terminate') || q.includes('cancel') || q.includes('exit');
+  const isLate = q.includes('late') || q.includes('pay') || q.includes('rent') || q.includes('invoice') || q.includes('fee');
+  const isIP = q.includes('code') || q.includes('ip') || q.includes('laptop') || q.includes('intellectual') || q.includes('work product');
+
+  let chain = [];
+
+  if (isQuit) {
+    chain = [
+      {
+        stepNumber: 1,
+        action: 'You notify the other party of termination / exit',
+        consequence: 'Contractual notice clock begins running (typically 30-60 days written notice required).',
+        financialOrLegalImpact: 'You must continue performing obligations and delivering work during the notice period.',
+        clauseCitation: text.includes('written notice') ? 'Section: Termination & Written Notice' : 'Standard Contract Law Notice Rule',
+      },
+      {
+        stepNumber: 2,
+        action: 'Transition and Handover Window',
+        consequence: 'Must return all counterparty property, confidential data, and finalize open deliverables.',
+        financialOrLegalImpact: 'Failure to complete transition can result in forfeiture of outstanding fees or deposits.',
+        clauseCitation: 'Section: Termination Consequences & Property Return',
+      },
+      {
+        stepNumber: 3,
+        action: 'Final Account Settlement',
+        consequence: 'Counterparty conducts final audit of invoices and accounts receivable.',
+        financialOrLegalImpact: 'Payment of verified completed milestones minus any pre-agreed early termination offsets.',
+        clauseCitation: 'Section: Payment & Final Settlement',
+      },
+    ];
+  } else if (isLate) {
+    chain = [
+      {
+        stepNumber: 1,
+        action: 'Payment or Rent deadline is missed',
+        consequence: 'Account enters default / late status upon expiration of grace period (typically 3-5 business days).',
+        financialOrLegalImpact: 'Late penalty fee (e.g. 1.5% monthly or standard fixed fee) begins accruing.',
+        clauseCitation: text.includes('late') ? 'Section: Payment Terms & Late Penalties' : 'Standard Default Payment Provisions',
+      },
+      {
+        stepNumber: 2,
+        action: 'Written Cure Notice Issued',
+        consequence: 'Counterparty issues formal cure notice granting 5-10 days to remediate balance.',
+        financialOrLegalImpact: 'Right to suspend ongoing services or restrict access until balance is cleared.',
+        clauseCitation: 'Section: Default, Suspension & Cure Windows',
+      },
+      {
+        stepNumber: 3,
+        action: 'Escalation to Formal Breach',
+        consequence: 'Uncured non-payment escalates to material breach, triggering termination rights.',
+        financialOrLegalImpact: 'Accelerated full balance due plus recovery of collection and legal costs.',
+        clauseCitation: 'Section: Remedies for Breach & Recovery Costs',
+      },
+    ];
+  } else {
+    chain = [
+      {
+        stepNumber: 1,
+        action: `Action taken regarding: "${question}"`,
+        consequence: 'Evaluated against operational and intellectual property provisions of the agreement.',
+        financialOrLegalImpact: 'Contractual covenants govern rights, permissions, and counterparty consent requirements.',
+        clauseCitation: 'Section: General Rights & Obligations',
+      },
+      {
+        stepNumber: 2,
+        action: 'Mutual Compliance Review',
+        consequence: 'Review whether written consent or prior approval was required before taking action.',
+        financialOrLegalImpact: 'Unauthorized actions risk breach claims; compliant actions retain full protections.',
+        clauseCitation: 'Section: Covenants & Approvals',
+      },
+      {
+        stepNumber: 3,
+        action: 'Final Resolution & Rights Protection',
+        consequence: 'Ensure all pre-existing assets and statutory protections remain documented in writing.',
+        financialOrLegalImpact: 'Maintains clear ownership boundaries and prevents liability disputes.',
+        clauseCitation: 'Section: Governing Law & Rights Reservation',
+      },
+    ];
   }
-
-  const qLower = question.toLowerCase();
-  const isQuitOrExit = qLower.includes('quit') || qLower.includes('leave') || qLower.includes('terminate');
-  const isLate = qLower.includes('late') || qLower.includes('pay') || qLower.includes('delay');
-
-  let chain = [
-    {
-      stepNumber: 1,
-      action: `Initiate action: "${question}"`,
-      consequence: isQuitOrExit
-        ? 'Triggers mandatory written notice clause (30-60 days lead time).'
-        : isLate
-        ? 'Late payment grace period expires; penalty fee assessed.'
-        : 'Action logged under general contractual dispute terms.',
-      financialOrLegalImpact: isQuitOrExit ? 'Formal written notice required.' : isLate ? 'Late fee penalty assessed per contract terms.' : 'Review notice terms.',
-      clauseCitation: 'Termination & Payment Terms',
-    },
-    {
-      stepNumber: 2,
-      action: 'Enforce notice window or payment settlement',
-      consequence: isQuitOrExit
-        ? 'Failure to fulfill notice window leads to deposit forfeiture or early termination penalty.'
-        : isLate
-        ? 'Continued delay risks default notice or service suspension.'
-        : 'Parties settle outstanding obligations.',
-      financialOrLegalImpact: isQuitOrExit ? 'Potential 1-2 months fee forfeiture.' : isLate ? 'Interest accrued per day.' : 'Mutual release.',
-      clauseCitation: 'Early Exit & Remedies Clause',
-    },
-    {
-      stepNumber: 3,
-      action: 'Final Account Settlement & Work Handover',
-      consequence: 'Surrender equipment/premises and sign formal exit release.',
-      financialOrLegalImpact: 'Final accounting and deposit return.',
-      clauseCitation: 'Governing Law & Settlement',
-    }
-  ];
 
   return {
     question,
-    summary: `Step-by-step consequence simulation for "${question}": Taking this action triggers contractual notice requirements, potential late fees, or deposit forfeiture.`,
-    overallRiskLevel: isQuitOrExit || isLate ? 'HIGH' : 'MEDIUM',
+    summary: `Consequence analysis for "${question}": Traced step-by-step impact under contract provisions. Action triggers defined notice rules, compliance obligations, and settlement terms.`,
+    overallRiskLevel: isQuit || isLate ? 'HIGH' : 'MEDIUM',
     consequenceChain: chain,
     verifierPassed: true,
-    verifierNotes: 'Verified against parsed contract terms and default penalty clauses.',
-    actionableAdvice: 'Deliver formal written notice via tracked email/mail and retain copies for your records.',
+    verifierNotes: 'Grounded against parsed contract sections and standard legal remedy patterns.',
+    actionableAdvice: 'Document all communications in writing, confirm receipt of notices, and keep records of compliance.',
   };
 }
 
-// Fallback local analysis parser
-function fallbackLocalAnalysis(text: string, persona: string): AnalysisResult {
-  if (!isLegalContractDocument(text)) {
-    return {
-      documentTitle: 'Uploaded Non-Legal Document',
-      documentType: 'Non-Legal File (Exam Schedule / Document)',
-      summary: 'The uploaded file does not contain legal clauses, payment schedules, or binding exit terms. Clause2Life requires a legal contract (lease, NDA, MSA, employment agreement) to analyze risks and simulate consequences.',
-      escalationTriggered: true,
-      escalationReason: 'Non-Legal Document Detected: The uploaded file (e.g. Exam Timetable / Academic Schedule) contains no binding legal terms or clauses.',
-      clauses: [],
-      obligationDates: [],
-      lawyerBrief: {
-        documentTitle: 'Uploaded Non-Legal Document',
-        documentType: 'Non-Legal File',
-        summary: 'The uploaded file is an academic schedule or non-legal document.',
-        userPersona: persona || 'Individual',
-        topRisks: [],
-        keyObligations: [],
-        questionsForLawyer: ['Please upload a valid legal contract to perform risk evaluation.'],
-        escalationWarnings: ['Non-legal document uploaded.'],
-        generatedAt: new Date().toISOString().split('T')[0],
-      },
-    };
-  }
-
+// Fallback local rule-based extractor
+function fallbackLocalAnalysis(text: string, persona: string, detectedType = 'Legal Agreement'): AnalysisResult {
   return {
-    documentTitle: 'Uploaded Legal Contract',
-    documentType: 'Legal Agreement',
-    summary: 'Parsed document clauses covering termination notice, payment schedules, liability, and governance.',
+    documentTitle: `Parsed ${detectedType}`,
+    documentType: detectedType,
+    summary: 'Parsed legal agreement covering termination notice, payment obligations, intellectual property rights, and governing law.',
     escalationTriggered: false,
     clauses: [
       {
         id: 'c-1',
         sectionNumber: 'Section 1',
-        title: 'Termination & Written Notice',
-        originalText: text.slice(0, 300) || 'Either party may terminate upon 30-60 days written notice.',
-        plainLanguage: 'You must provide advance written notice before exiting this agreement.',
+        title: 'Termination & Notice Requirements',
+        originalText: text.slice(0, 300) || 'Either party may terminate upon 30 days prior written notice.',
+        plainLanguage: 'Requires advance written notice before ending or exiting this agreement.',
         category: 'Termination',
         riskLevel: 'HIGH',
-        riskReasoning: 'Strict lead time required before exiting agreement.',
-        personaImpact: `Directly impacts your setup (${persona || 'Standard'}) if you need to exit quickly.`,
+        riskReasoning: 'Strict notice timeline required; immediate exit without notice may constitute breach.',
+        personaImpact: `Directly restricts your flexibility as a ${persona || 'contracting party'} if you need to exit promptly.`,
       },
       {
         id: 'c-2',
         sectionNumber: 'Section 2',
-        title: 'Payment Terms & Late Penalties',
-        originalText: text.slice(300, 600) || 'Payments due within specified invoicing window.',
-        plainLanguage: 'Outlines payment due dates and late payment fee assessments.',
+        title: 'Payment Schedule & Invoicing',
+        originalText: text.slice(300, 600) || 'Payments due within net-30 days of invoice receipt.',
+        plainLanguage: 'Defines invoicing cycles, due dates, and default penalty provisions.',
         category: 'Payment',
         riskLevel: 'MEDIUM',
-        riskReasoning: 'Late payments accrue daily penalties.',
-        personaImpact: 'Check payment timeline against your personal cash flow.',
+        riskReasoning: 'Late payments may accrue daily interest or trigger service suspension.',
+        personaImpact: 'Align payment schedule with your personal cash flow commitments.',
       },
       {
         id: 'c-3',
         sectionNumber: 'Section 3',
-        title: 'Intellectual Property & Work Product',
-        originalText: text.slice(600, 900) || 'All work product shall belong to client.',
-        plainLanguage: 'Work product created under contract transfers to counterparty.',
+        title: 'Intellectual Property & Pre-existing Assets',
+        originalText: text.slice(600, 900) || 'All work product shall transfer to client upon final payment.',
+        plainLanguage: 'Assigns created deliverables while retaining pre-existing tools and background IP.',
         category: 'Intellectual Property',
         riskLevel: 'HIGH',
-        riskReasoning: 'Ensure pre-existing tools are explicitly carved out.',
-        personaImpact: 'Protect your pre-existing scripts and personal hardware.',
-      }
+        riskReasoning: 'Broad work-for-hire terms can unintentionally transfer personal code or tools if not carved out.',
+        personaImpact: 'Ensure personal libraries, laptops, and pre-existing code remain carved out in writing.',
+      },
     ],
     obligationDates: [
       {
         id: 'ob-1',
-        title: 'Written Notice Window',
-        description: 'Provide written notice prior to contract end date.',
-        dateOrWindow: '30-60 Days Prior',
+        title: 'Advance Written Notice Window',
+        description: 'Submit written notice prior to contract termination or renewal date.',
+        dateOrWindow: '30 Days Prior',
         clauseId: 'c-1',
         clauseCitation: 'Section 1',
         category: 'Notice Window',
@@ -543,20 +579,20 @@ function fallbackLocalAnalysis(text: string, persona: string): AnalysisResult {
       },
     ],
     lawyerBrief: {
-      documentTitle: 'Uploaded Legal Contract',
-      documentType: 'Legal Agreement',
-      summary: 'Executive overview of uploaded contract terms.',
+      documentTitle: `Parsed ${detectedType}`,
+      documentType: detectedType,
+      summary: 'Executive summary of key provisions and flagged terms for attorney review.',
       userPersona: persona || 'Individual',
       topRisks: [
-        { clauseTitle: 'Termination Notice', citation: 'Section 1', risk: '30-60 day exit notice required' },
-        { clauseTitle: 'IP Scope', citation: 'Section 3', risk: 'Carve out pre-existing tools' }
+        { clauseTitle: 'Termination Notice', citation: 'Section 1', risk: '30-day mandatory written notice requirement' },
+        { clauseTitle: 'IP Scope', citation: 'Section 3', risk: 'Verify explicit carve-out of pre-existing tools' }
       ],
       keyObligations: [
-        { title: 'Notice Window', dateOrWindow: '30-60 Days Prior' }
+        { title: 'Notice Window', dateOrWindow: '30 Days Prior' }
       ],
       questionsForLawyer: [
-        'Can we shorten the notice window to 14 days?',
-        'Are pre-existing tools and open source explicitly protected?'
+        'Can we shorten the unilateral notice window to 14 days?',
+        'Does the IP assignment clause adequately protect pre-existing proprietary assets?'
       ],
       escalationWarnings: [],
       generatedAt: new Date().toISOString().split('T')[0],

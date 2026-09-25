@@ -169,11 +169,19 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen flex flex-col justify-between">
+      {/* Skip to Content for Keyboard/Screen Reader Accessibility */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2.5 focus:bg-blue-600 focus:text-white focus:rounded-xl focus:shadow-xl focus:font-bold focus:outline-none focus:ring-2 focus:ring-white"
+      >
+        Skip to main content
+      </a>
+
       {/* Top Navigation Bar */}
-      <header className="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+      <header className="bg-slate-900 text-white sticky top-0 z-40 shadow-md" role="banner">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-gradient-to-tr from-blue-600 to-emerald-500 rounded-xl shadow-lg">
+            <div className="p-2 bg-gradient-to-tr from-blue-600 to-emerald-500 rounded-xl shadow-lg" aria-hidden="true">
               <Scale className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -193,22 +201,25 @@ export default function HomePage() {
 
           <div className="flex items-center space-x-2 sm:space-x-2.5">
             <button
+              type="button"
               onClick={() => setIsHowToUseOpen(true)}
-              className="text-xs px-3 py-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 hover:border-blue-400 font-semibold transition flex items-center gap-1.5 shadow-xs"
+              className="text-xs px-3 py-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 hover:border-blue-400 font-semibold transition flex items-center gap-1.5 shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
               title="How to Use Clause2Life"
-              aria-label="How to use guide"
+              aria-label="Open How to use guide"
             >
               <HelpCircle className="w-4 h-4 text-blue-400" />
               <span className="inline">How to Use</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setIsApiKeyModalOpen(true)}
-              className={`text-xs px-3 py-1.5 rounded-xl border font-semibold transition flex items-center gap-1.5 ${
+              className={`text-xs px-3 py-1.5 rounded-xl border font-semibold transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
                 apiKey
                   ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
                   : 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
               }`}
+              aria-label="Configure LLM API Key"
             >
               <Key className="w-3.5 h-3.5" />
               <span>{apiKey ? 'Nara / Gemini Key' : 'Configure API Key'}</span>
@@ -218,7 +229,7 @@ export default function HomePage() {
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow space-y-6 w-full">
+      <main id="main-content" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-grow space-y-6 w-full" role="main">
         {/* Persistent Legal Disclaimer Banner */}
         <DisclaimerBanner
           escalationTriggered={analysisResult?.escalationTriggered}
@@ -226,8 +237,8 @@ export default function HomePage() {
         />
 
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-          <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
+        <section aria-labelledby="hero-heading" className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-950 text-white rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+          <div className="absolute -right-10 -bottom-10 opacity-10 pointer-events-none" aria-hidden="true">
             <Scale className="w-96 h-96" />
           </div>
           <div className="relative z-10 space-y-3 max-w-3xl">
@@ -235,17 +246,17 @@ export default function HomePage() {
               <Sparkles className="w-3.5 h-3.5 text-blue-400" />
               <span>Consequence-Driven Legal AI</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+            <h2 id="hero-heading" className="text-2xl sm:text-3xl font-black tracking-tight">
               Don't ask what a clause says. Ask what happens to <span className="text-blue-400 underline underline-offset-4">YOU</span>.
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
               Clause2Life turns legal agreements into personalized life simulations. Test scenarios like <em>"What if I quit in 3 months?"</em> or <em>"What if I pay late?"</em>, extract calendar deadlines, and generate counter-requests grounded 100% in contract text.
             </p>
           </div>
-        </div>
+        </section>
 
         {/* Step 1 & Step 2 Input Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section aria-label="Document and Persona Setup" className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <DocumentUploader
             onDocumentLoaded={handleDocumentLoaded}
             onClearDocument={handleClearDocument}
@@ -253,15 +264,20 @@ export default function HomePage() {
             isProcessingDocument={isProcessingDocument}
           />
           <PersonaForm currentPersona={persona} onPersonaChange={handlePersonaChange} />
-        </div>
+        </section>
 
         {/* Loaded Document Viewer Section */}
         {contractText && (
-          <div className="bg-white border border-blue-200 rounded-2xl p-5 shadow-sm space-y-3">
+          <section aria-label="Loaded Document Preview" className="bg-white border border-blue-200 rounded-2xl p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div
                 onClick={() => setShowDocPreview(!showDocPreview)}
                 className="flex items-center justify-between cursor-pointer flex-1"
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setShowDocPreview(!showDocPreview); }}
+                aria-expanded={showDocPreview}
+                aria-label="Toggle full document text preview"
               >
                 <div className="flex items-center space-x-2">
                   <FileText className="w-5 h-5 text-blue-600" />
@@ -282,7 +298,8 @@ export default function HomePage() {
               <button
                 type="button"
                 onClick={handleClearDocument}
-                className="px-3 py-1.5 text-[11px] font-semibold rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition"
+                className="px-3 py-1.5 text-[11px] font-semibold rounded-xl border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 transition focus-visible:ring-2 focus-visible:ring-red-500"
+                aria-label="Clear document text"
               >
                 Clear text
               </button>
@@ -293,20 +310,25 @@ export default function HomePage() {
                 {contractText}
               </div>
             )}
-          </div>
+          </section>
         )}
 
         {/* Tab Navigation */}
-        <div className="border-b border-slate-200">
-          <div className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
+        <nav aria-label="Feature Workspace Tabs" className="border-b border-slate-200">
+          <div role="tablist" aria-label="Clause2Life Features" className="flex items-center space-x-2 overflow-x-auto pb-2 scrollbar-none">
             {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
+                  id={`tab-${tab.id}`}
+                  role="tab"
+                  type="button"
+                  aria-selected={isActive}
+                  aria-controls={`tabpanel-${tab.id}`}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
                     isActive
                       ? 'bg-slate-900 text-white shadow-sm'
                       : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
@@ -327,10 +349,15 @@ export default function HomePage() {
               );
             })}
           </div>
-        </div>
+        </nav>
 
         {/* Active Tab View Rendering */}
-        <div className="transition-all duration-200">
+        <div
+          id={`tabpanel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+          className="transition-all duration-200"
+        >
           {activeTab === 'simulator' && (
             <ScenarioSimulator
               contractText={contractText}
