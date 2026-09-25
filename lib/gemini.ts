@@ -28,10 +28,10 @@ function cleanJsonResponse(rawText: string): string {
   return text;
 }
 
-// Call Nara Router OpenAI-compatible API with 12s timeout for fast response & local fallback
+// Call Nara Router OpenAI-compatible API with 30s timeout
 async function callNaraRouter(prompt: string, apiKey: string = NARA_ROUTER_DEFAULT_KEY): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
   try {
     const res = await fetch(NARA_ROUTER_BASE_URL, {

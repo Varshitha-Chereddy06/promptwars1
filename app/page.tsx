@@ -11,6 +11,7 @@ import {
   FileCheck,
   Cpu,
   Key,
+  HelpCircle,
   Sparkles,
   Github,
   FileText,
@@ -30,6 +31,7 @@ import { DocumentCompare } from '@/components/DocumentCompare';
 import { LawyerBrief } from '@/components/LawyerBrief';
 import { ArchitectureView } from '@/components/ArchitectureView';
 import { ApiKeyModal } from '@/components/ApiKeyModal';
+import { HowToUseModal } from '@/components/HowToUseModal';
 
 import { SAMPLE_CONTRACTS, SampleContract } from '@/lib/samples';
 import { AnalysisResult, Persona, Clause } from '@/lib/types';
@@ -50,6 +52,7 @@ export default function HomePage() {
   const [isProcessingDocument, setIsProcessingDocument] = useState<boolean>(false);
   const [apiKey, setApiKey] = useState<string>('');
   const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState<boolean>(false);
+  const [isHowToUseOpen, setIsHowToUseOpen] = useState<boolean>(false);
   const [selectedNegotiationClause, setSelectedNegotiationClause] = useState<Clause | null>(null);
   const [showDocPreview, setShowDocPreview] = useState<boolean>(true);
 
@@ -188,7 +191,17 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 sm:space-x-2.5">
+            <button
+              onClick={() => setIsHowToUseOpen(true)}
+              className="text-xs px-3 py-1.5 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20 hover:border-blue-400 font-semibold transition flex items-center gap-1.5 shadow-xs"
+              title="How to Use Clause2Life"
+              aria-label="How to use guide"
+            >
+              <HelpCircle className="w-4 h-4 text-blue-400" />
+              <span className="inline">How to Use</span>
+            </button>
+
             <button
               onClick={() => setIsApiKeyModalOpen(true)}
               className={`text-xs px-3 py-1.5 rounded-xl border font-semibold transition flex items-center gap-1.5 ${
@@ -410,6 +423,16 @@ export default function HomePage() {
         onClose={() => setIsApiKeyModalOpen(false)}
         onSaveKey={handleSaveApiKey}
         currentKey={apiKey}
+      />
+
+      {/* Interactive How to Use Guide Modal */}
+      <HowToUseModal
+        isOpen={isHowToUseOpen}
+        onClose={() => setIsHowToUseOpen(false)}
+        onOpenApiKeyModal={() => {
+          setIsHowToUseOpen(false);
+          setIsApiKeyModalOpen(true);
+        }}
       />
     </div>
   );
