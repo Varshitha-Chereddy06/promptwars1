@@ -247,10 +247,10 @@ export default function HomePage() {
               <span>Consequence-Driven Legal AI</span>
             </div>
             <h2 id="hero-heading" className="text-2xl sm:text-3xl font-black tracking-tight">
-              Don't ask what a clause says. Ask what happens to <span className="text-blue-400 underline underline-offset-4">YOU</span>.
+              Don&apos;t ask what a clause says. Ask what happens to <span className="text-blue-400 underline underline-offset-4">YOU</span>.
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Clause2Life turns legal agreements into personalized life simulations. Test scenarios like <em>"What if I quit in 3 months?"</em> or <em>"What if I pay late?"</em>, extract calendar deadlines, and generate counter-requests grounded 100% in contract text.
+              Clause2Life turns legal agreements into personalized life simulations. Test scenarios like <em>&ldquo;What if I quit in 3 months?&rdquo;</em> or <em>&ldquo;What if I pay late?&rdquo;</em>, extract calendar deadlines, and generate counter-requests grounded 100% in contract text.
             </p>
           </div>
         </section>

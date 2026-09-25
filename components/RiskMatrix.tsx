@@ -148,7 +148,7 @@ export const RiskMatrix: React.FC<RiskMatrixProps> = ({
                       <FileCode className="w-3.5 h-3.5 text-slate-400" /> Exact Legalese Text:
                     </span>
                     <p className="font-mono text-slate-700 text-[11px] leading-relaxed italic bg-slate-50 p-2 rounded">
-                      "{clause.originalText}"
+                      &ldquo;{clause.originalText}&rdquo;
                     </p>
                   </div>
 

@@ -82,7 +82,7 @@ export const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
               <Network className="w-3.5 h-3.5 text-blue-600" /> Pre-Configured Provider:
             </span>
             <p className="text-[11px] text-blue-800">
-              Nara Router API Key (<code className="font-mono text-blue-900">sk-nry-HV1B...</code>) at <code className="font-mono text-blue-900">https://router.bynara.id/v1</code> is configured by default.
+              Nara Router API Key is securely loaded from server environment variables (<code className="font-mono text-blue-900">NARA_API_KEY</code>) targeting <code className="font-mono text-blue-900">https://router.bynara.id/v1</code>.
             </p>
           </div>
         </div>

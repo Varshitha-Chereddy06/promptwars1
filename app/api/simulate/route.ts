@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { simulateScenarioWithGemini } from '@/lib/gemini';
 import { validateLegalDocument, sanitizeInput } from '@/lib/documentValidator';
-import { apiRateLimiter } from '@/lib/rateLimiter';
+import { apiRateLimiter, RateLimiter } from '@/lib/rateLimiter';
 import { simulationCache } from '@/lib/cache';
 
+/**
+ * POST /api/simulate
+ * Runs a grounded "What-If?" scenario simulation against a loaded legal contract.
+ * Returns a chronological consequence chain with exact clause citations.
+ */
 export async function POST(req: NextRequest) {
   try {
-    // Rate Limiting Check
-    const ip = req.headers.get('x-forwarded-for') || '127.0.0.1';
+    // ──── Rate Limiting ────
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || '127.0.0.1';
     const rateCheck = apiRateLimiter.check(ip);
     if (!rateCheck.success) {
       return NextResponse.json(
@@ -15,10 +20,17 @@ export async function POST(req: NextRequest) {
           error: 'Too Many Requests',
           details: `Rate limit exceeded. Please wait ${rateCheck.resetTime} seconds before submitting again.`,
         },
-        { status: 429, headers: { 'Retry-After': String(rateCheck.resetTime) } }
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(rateCheck.resetTime),
+            ...RateLimiter.getHeaders(rateCheck),
+          },
+        }
       );
     }
 
+    // ──── Input Parsing & Sanitization ────
     const body = await req.json();
     const { contractText, persona, question, apiKey } = body;
 
@@ -26,6 +38,7 @@ export async function POST(req: NextRequest) {
     const cleanDoc = sanitizeInput(contractText || '', 25000);
     const cleanPersona = sanitizeInput(persona || '', 500);
 
+    // ──── Validation ────
     if (!cleanQ) {
       return NextResponse.json(
         { error: 'Scenario question is required.' },
@@ -54,13 +67,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check In-Memory Cache for Sub-Millisecond Response
+    // ──── Cache Lookup ────
     const cacheKey = simulationCache.generateKey('sim', cleanDoc.slice(0, 1000), cleanQ, cleanPersona);
     const cachedResult = simulationCache.get(cacheKey);
     if (cachedResult) {
-      return NextResponse.json({ ...cachedResult, cached: true });
+      return NextResponse.json(
+        { ...cachedResult, cached: true },
+        { headers: { ...RateLimiter.getHeaders(rateCheck), 'X-Cache': 'HIT' } }
+      );
     }
 
+    // ──── AI Simulation ────
     const result = await simulateScenarioWithGemini(
       cleanDoc,
       cleanPersona,
@@ -71,11 +88,15 @@ export async function POST(req: NextRequest) {
     // Cache the successful scenario result
     simulationCache.set(cacheKey, result);
 
-    return NextResponse.json({ ...result, cached: false });
-  } catch (err: any) {
-    console.error('Error in /api/simulate:', err);
     return NextResponse.json(
-      { error: err.message || 'Failed to simulate scenario.' },
+      { ...result, cached: false },
+      { headers: { ...RateLimiter.getHeaders(rateCheck), 'X-Cache': 'MISS' } }
+    );
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred.';
+    console.error('Error in /api/simulate:', message);
+    return NextResponse.json(
+      { error: 'Failed to simulate scenario. Please try again.' },
       { status: 500 }
     );
   }

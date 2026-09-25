@@ -96,7 +96,7 @@ export const NegotiationKit: React.FC<NegotiationKitProps> = ({
             </span>
           </div>
           <p className="font-mono text-slate-600 italic bg-white p-2.5 rounded border border-slate-200">
-            "{currentClause.originalText}"
+            &ldquo;{currentClause.originalText}&rdquo;
           </p>
 
           <button
@@ -149,7 +149,7 @@ export const NegotiationKit: React.FC<NegotiationKitProps> = ({
             <div>
               <span className="font-bold text-slate-700 block mb-1">Proposed Redline Text:</span>
               <p className="font-mono text-teal-900 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200 leading-relaxed">
-                "{draft.proposedRevisionText}"
+                &ldquo;{draft.proposedRevisionText}&rdquo;
               </p>
             </div>
 

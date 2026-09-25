@@ -266,7 +266,7 @@ export const HowToUseModal: React.FC<HowToUseModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
               <div className="p-2 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center space-x-2">
                 <Play className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="font-semibold text-slate-700">"What-If?" Sim</span>
+                <span className="font-semibold text-slate-700">&ldquo;What-If?&rdquo; Sim</span>
               </div>
               <div className="p-2 rounded-xl border border-slate-200 bg-slate-50/50 flex items-center space-x-2">
                 <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
@@ -320,7 +320,7 @@ export const HowToUseModal: React.FC<HowToUseModalProps> = ({
                 onClick={onClose}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold hover:from-emerald-700 hover:to-teal-700 transition flex items-center gap-1.5 shadow-md shadow-emerald-500/20"
               >
-                <CheckCircle2 className="w-4 h-4" /> Got it, Let's Start!
+                <CheckCircle2 className="w-4 h-4" /> Got it, Let&apos;s Start!
               </button>
             )}
           </div>

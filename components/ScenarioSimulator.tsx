@@ -76,7 +76,7 @@ export const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <Play className="w-5 h-5 text-emerald-600 fill-emerald-600" />
-            "What If?" Life Scenario Consequence Simulator
+            &ldquo;What If?&rdquo; Life Scenario Consequence Simulator
           </h2>
           <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded-full flex items-center gap-1">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Grounded Verifier Enabled
@@ -183,7 +183,7 @@ export const ScenarioSimulator: React.FC<ScenarioSimulatorProps> = ({
               <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800">
                 Grounded Scenario Assessment
               </span>
-              <h3 className="font-bold text-slate-900 text-base">"{scenarioResult.question}"</h3>
+              <h3 className="font-bold text-slate-900 text-base">&ldquo;{scenarioResult.question}&rdquo;</h3>
             </div>
             <div className="text-right">
               <span

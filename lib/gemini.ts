@@ -1,8 +1,31 @@
+/**
+ * Dual LLM Dispatcher & Prompt Engineering Module for Clause2Life
+ *
+ * Supports two AI backends:
+ * 1. Nara Router (Llama 3.3 70B / Nemotron) - Free tier, OpenAI-compatible
+ * 2. Google Gemini 1.5 Flash - Premium tier, Google AI SDK
+ *
+ * Features:
+ * - Automatic model selection based on available API keys
+ * - Robust JSON response cleaning (strips markdown, reasoning blocks)
+ * - 30-second timeout with AbortController
+ * - Graceful fallback to local rule-based analysis on AI failure
+ * - All inputs sanitized before prompt injection
+ *
+ * Environment Variables:
+ * - NARA_API_KEY: API key for Nara Router (required for free tier)
+ * - GEMINI_API_KEY: API key for Google Gemini (optional, premium)
+ */
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AnalysisResult, ScenarioResult, NegotiationDraft, DocumentComparison } from './types';
 import { validateLegalDocument, sanitizeInput } from './documentValidator';
 
-const NARA_ROUTER_DEFAULT_KEY = 'sk-nry-HV1Bly91j7eKd_czmamye_dyhWUv01lSb0suK3cvkAo';
+/**
+ * Default API key loaded from environment variable.
+ * SECURITY: Never hardcode API keys in source code.
+ */
+const NARA_ROUTER_DEFAULT_KEY = process.env.NARA_API_KEY || '';
 const NARA_ROUTER_BASE_URL = 'https://router.bynara.id/v1/chat/completions';
 const NARA_ROUTER_MODEL = 'nemotron-3-super-free';
 
